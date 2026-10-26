@@ -1,0 +1,17 @@
+[package]
+name = "backfill-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+# Made-up data for tests and screenshots.
+fixtures = []
+
+[dependencies]
+jiff.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

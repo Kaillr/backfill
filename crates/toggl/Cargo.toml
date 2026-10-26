@@ -1,0 +1,15 @@
+[package]
+name = "backfill-toggl"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+backfill-http.workspace = true
+jiff.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+backfill-http = { workspace = true, features = ["fake"] }

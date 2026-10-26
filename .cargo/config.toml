@@ -1,0 +1,4 @@
+# On macOS, `cargo run` opens backfill as an app bundle. macOS only lets apps ask for
+# calendar access, and the calendar is where backfill reads Outlook meetings from.
+[target.'cfg(target_os = "macos")']
+runner = "scripts/macos-runner.sh"
