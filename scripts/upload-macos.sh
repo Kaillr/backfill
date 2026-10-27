@@ -1,6 +1,6 @@
 #!/bin/sh
 # Adds what scripts/package-macos.sh built to the GitHub release tagged TAG, which
-# semantic-release has just made: the installer, the packages, and this release's part of
+# semantic-release has just made: the disk image, the packages, and this release's part of
 # the update feed. Needs vpk and GITHUB_TOKEN.
 #
 #   scripts/upload-macos.sh v0.2.0

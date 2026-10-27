@@ -7,21 +7,23 @@ writes nothing to Jira until you've reviewed exactly what will change.
 ## Install
 
 backfill is in beta. Download
-[backfill-osx-Setup.pkg](https://github.com/Kaillr/backfill/releases/latest/download/backfill-osx-Setup.pkg)
-from the [newest release](https://github.com/Kaillr/backfill/releases/latest) and open it. The
-installer asks whether to install for everyone or just you, then opens backfill. It needs a
-Mac with Apple silicon and macOS 14 or later.
+[backfill.dmg](https://github.com/Kaillr/backfill/releases/latest/download/backfill.dmg) from
+the [newest release](https://github.com/Kaillr/backfill/releases/latest), open it and drag
+backfill to Applications. It needs a Mac with Apple silicon and macOS 14 or later.
 
-The installer isn't signed by Apple, so the first time macOS says it can't check it. Open
-System Settings, go to Privacy & Security and press Open Anyway next to it.
+backfill isn't signed by Apple, so the first time you open it macOS says it can't check it.
+Open System Settings, go to Privacy & Security and press Open Anyway next to backfill. Then
+macOS asks once whether backfill may read your calendars.
 
-Or fetch the installer from Terminal, which skips that step, since macOS only asks about
+Or install it from Terminal, which skips the Open Anyway step, since macOS only asks about
 files that came through a browser:
 
 ```sh
-curl -fsSL -o /tmp/backfill-osx-Setup.pkg \
-  https://github.com/Kaillr/backfill/releases/latest/download/backfill-osx-Setup.pkg
-open /tmp/backfill-osx-Setup.pkg
+curl -fsSL -o /tmp/backfill.dmg https://github.com/Kaillr/backfill/releases/latest/download/backfill.dmg
+hdiutil attach -nobrowse -quiet -mountpoint /tmp/backfill-dmg /tmp/backfill.dmg
+ditto /tmp/backfill-dmg/backfill.app /Applications/backfill.app
+hdiutil detach -quiet /tmp/backfill-dmg
+open /Applications/backfill.app
 ```
 
 ## Updates
@@ -266,10 +268,10 @@ release, named "backfill 0.x.y beta" while the version is 0.x.
 
 The release itself is built with `vpk`, Velopack's CLI (`dotnet tool install -g vpk`).
 `scripts/package-macos.sh VERSION` builds and signs the app and packs it into
-`target/velopack`: the installer, the full package, a delta from the previous release
+`target/velopack`: the disk image, the full package, a delta from the previous release
 (downloaded first), and the update feed. `scripts/upload-macos.sh TAG` adds them to the
-release. The packaging script also hands the installed app to the user who installed it, so
-updating it never needs an admin password.
+release. There's no installer package: dragging backfill to Applications makes it yours, so
+Velopack can update it without asking for an admin password.
 
 The app is signed with the self-signed certificate "backfill self-signed". Updates don't
 depend on it, but it's what makes each version the same app to macOS, so calendar access and

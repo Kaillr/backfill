@@ -1,7 +1,7 @@
 #!/bin/sh
-# Builds a backfill release with Velopack, in target/velopack: the installer
-# (backfill-osx-Setup.pkg), the full package, a delta from the release before, and the feed
-# the app reads its updates from.
+# Builds a backfill release with Velopack, in target/velopack: the disk image people install
+# from (backfill.dmg), the full package, a delta from the release before, and the feed the
+# app reads its updates from.
 #
 #   scripts/package-macos.sh 0.2.0    sets the version in the source, then builds and packs
 #   scripts/package-macos.sh --check  only checks that codesign can use the certificate
@@ -65,18 +65,20 @@ cp crates/app/macos/Info.plist "$app/Contents/Info.plist"
 "$vpk" download github --repoUrl "$repo" --channel osx --outputDir "$releases" \
     ${GITHUB_TOKEN:+--token "$GITHUB_TOKEN"}
 
+# No .pkg: backfill installs by dragging it to Applications, so it belongs to whoever did, and
+# Velopack can update it without asking for an admin password.
 "$vpk" pack --packId backfill --packVersion "$version" --packTitle backfill --packAuthors backfill \
-    --packDir "$app" --mainExe backfill --channel osx --noPortable --outputDir "$releases" \
+    --packDir "$app" --mainExe backfill --channel osx --noInst --outputDir "$releases" \
     --signAppIdentity "$identity" --signEntitlements crates/app/macos/backfill.entitlements "$@"
 
-# The installer leaves the app owned by root, so its first update would ask for an admin
-# password. Hand it to whoever installed it instead.
-installer="$releases/backfill-osx-Setup.pkg"
-expanded="$(mktemp -d)/installer"
-pkgutil --expand "$installer" "$expanded"
-perl -0pi -e 's|\A(#!/bin/sh\n)|${1}chown -R "\$USER" "\$2/backfill.app"\n|' "$expanded"/*.pkg/Scripts/postinstall
-rm "$installer"
-pkgutil --flatten "$expanded" "$installer"
-rm -rf "$(dirname "$expanded")"
+# The disk image: the app vpk signed, next to a shortcut to Applications to drag it onto.
+# It's uploaded in place of vpk's zip of the same app.
+staging="$(mktemp -d)/backfill"
+mkdir -p "$staging"
+ditto -x -k "$releases/backfill-osx-Portable.zip" "$staging"
+ln -s /Applications "$staging/Applications"
+hdiutil create -volname backfill -srcfolder "$staging" -fs HFS+ -format UDZO -ov "$releases/backfill.dmg"
+rm -rf "$(dirname "$staging")" "$releases/backfill-osx-Portable.zip"
+perl -pi -e 's/backfill-osx-Portable\.zip/backfill.dmg/' "$releases/assets.osx.json"
 
 echo "package-macos: backfill $version is in $releases"

@@ -7,6 +7,7 @@
 
 use std::{
     cell::RefCell,
+    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -67,6 +68,20 @@ fn updater() -> Option<UpdateManager> {
     UpdateManager::new_boxed(source, None, None).ok()
 }
 
+/// Whether backfill runs where it can't be replaced: straight from its disk image, or from
+/// the read-only copy macOS makes of an app opened where it was downloaded.
+fn read_only_copy() -> bool {
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let exe = exe.to_string_lossy();
+    if exe.contains("/AppTranslocation/") {
+        return true;
+    }
+    // Disk images are mounted under /Volumes, read-only. External disks are there too.
+    let Some(end) = exe.find(".app/").filter(|_| exe.starts_with("/Volumes/")) else { return false };
+    let probe = PathBuf::from(&exe[..end + 4]).with_file_name(".backfill-write-check");
+    std::fs::create_dir(&probe).and_then(|_| std::fs::remove_dir(&probe)).is_err()
+}
+
 impl Backfill {
     /// Once, when backfill opens: installs a downloaded update when it quits, and looks for
     /// one if that's on.
@@ -113,6 +128,10 @@ impl Backfill {
     pub(super) fn check_for_updates(&mut self, cx: &mut Context<Self>) {
         let Some(updater) = self.updater.clone() else { return };
         if matches!(self.update, Update::Checking | Update::Downloading(_) | Update::Ready(_)) {
+            return;
+        }
+        if read_only_copy() {
+            self.set_update(Update::Failed("Move backfill to your Applications folder to get updates".into()), cx);
             return;
         }
         if let Some(asset) = updater.get_update_pending_restart() {
