@@ -56,7 +56,7 @@ jobs:
           --package semantic-release@25
           --package @semantic-release/exec@7
           --package @semantic-release/git@11
-          --package conventional-changelog-conventionalcommits@10
+          --package conventional-changelog-conventionalcommits@9
           semantic-release
 
       - name: Remove the signing keychain
