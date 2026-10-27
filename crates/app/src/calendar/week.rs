@@ -914,7 +914,10 @@ impl Backfill {
                     .text_xs()
                     .font_weight(FontWeight::MEDIUM)
                     .cursor_pointer()
-                    .when(!selected, |d| d.opacity(0.).group_hover(group, |s| s.opacity(1.)))
+                    // Always, not just while unselected: gpui only tracks the group's hovering
+                    // while the style is there, so adding it on deselecting would start stale.
+                    .group_hover(group, |s| s.opacity(1.))
+                    .when(!selected, |d| d.opacity(0.))
                     .on_click(cx.listener(move |this, _, window, cx| this.log_activity(id, window, cx)))
                     .child(log_label),
             )

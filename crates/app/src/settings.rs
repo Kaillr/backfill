@@ -749,8 +749,12 @@ impl SettingsView {
             .rounded_md()
             .text_sm()
             .cursor_pointer()
+            // On every item, selected or not: gpui only tracks hovering while an element has a
+            // hover style, so one added back on leaving the selection would start out stale and
+            // keep the old item lit until the mouse moved.
+            .hover(|s| s.text_color(theme.ink))
             .when(selected, |d| d.bg(theme.line).font_weight(FontWeight::MEDIUM))
-            .when(!selected, |d| d.text_color(theme.muted).hover(|s| s.text_color(theme.ink)))
+            .when(!selected, |d| d.text_color(theme.muted))
             .on_click(cx.listener(move |this, _, window, cx| this.select(pane, window, cx)))
             .child(div().flex_1().child(pane.title()))
             .when_some(dot, |d, color| d.child(div().size(px(7.)).rounded_full().bg(color)))
@@ -878,8 +882,10 @@ impl SettingsView {
                     .border_1()
                     .text_sm()
                     .cursor_pointer()
+                    // On every chip, for the reason given in render_nav.
+                    .hover(|s| s.border_color(theme.focus))
                     .when(on, |d| d.bg(with_alpha(theme.focus, 0.18)).border_color(theme.focus).text_color(theme.focus))
-                    .when(!on, |d| d.border_color(theme.line_strong).text_color(theme.muted).hover(|s| s.text_color(theme.ink)))
+                    .when(!on, |d| d.border_color(theme.line_strong).text_color(theme.muted))
                     .on_click(cx.listener({
                         let project = project.clone();
                         move |this, _, _, cx| this.toggle_project(&project, cx)
