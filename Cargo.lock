@@ -601,6 +601,7 @@ dependencies = [
  "backfill-jira",
  "backfill-mac-calendar",
  "backfill-toggl",
+ "backfill-update",
  "dirs 7.0.0",
  "gpui-ce",
  "gpui_ce_elements",
@@ -666,6 +667,16 @@ dependencies = [
  "jiff",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "backfill-update"
+version = "0.1.0"
+dependencies = [
+ "backfill-http",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

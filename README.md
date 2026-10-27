@@ -4,7 +4,41 @@ A week calendar for getting your hours into Jira. It shows your Outlook meetings
 timers next to the time you've logged, helps you fill the gaps on the right issues, and
 writes nothing to Jira until you've reviewed exactly what will change.
 
-## Run it
+## Install
+
+backfill is in beta. Download `backfill-macos.zip` from the newest
+[release](https://github.com/Kaillr/backfill/releases), unzip it and move `backfill.app` to
+Applications. It needs a Mac with Apple silicon and macOS 14 or later.
+
+backfill is signed with its own certificate rather than one from Apple, so the first time
+you open it macOS says it can't check it. Open System Settings, go to Privacy & Security and
+press Open Anyway next to backfill. After that it opens like any other app.
+
+Or install it from Terminal, which skips that step, since macOS only asks about apps that
+came through a browser:
+
+```sh
+curl -fsSL https://api.github.com/repos/Kaillr/backfill/releases \
+  | grep -om1 'https://[^"]*/backfill-macos.zip' \
+  | xargs curl -fsSL -o /tmp/backfill-macos.zip
+ditto -x -k /tmp/backfill-macos.zip /Applications
+open /Applications/backfill.app
+```
+
+## Updates
+
+backfill looks for a newer release when it opens, and again when you come back to it after
+half a day. It downloads it in the background and checks it before offering it: it has to be
+signed with backfill's certificate, and be the version the release says. Then **Restart to
+update** shows in the header. Pressing it quits backfill, puts the new version in place and
+opens it. If you'd rather not restart now, the update is installed when you quit.
+
+Settings has the switch to stop looking when backfill opens, and a Check now button for
+when it's off. Every version is signed with the same certificate, so macOS keeps backfill's
+calendar access and Keychain tokens across updates. While backfill is 0.x every release is a
+beta, marked as a pre-release on GitHub.
+
+## Run it from source
 
 ```sh
 cargo run --release
@@ -31,6 +65,7 @@ meetings aren't available there yet.
   meetings are part of the main task) and `toggl.json`. Set `BACKFILL_DATA_DIR` to use another
   folder for trying things out. That run doesn't read or write the Keychain, and tokens
   entered in it are forgotten when backfill quits.
+- **Downloaded updates** wait in `~/Library/Caches/backfill/updates` until they're installed.
 
 ## Jira
 
@@ -107,7 +142,8 @@ retiring: blocked by default since 1 October 2026 unless an organisation keeps i
 and gone on 1 April 2027. Apple has said a macOS 27 update moves Calendar onto Microsoft
 Graph before then.
 
-Signing: the app is signed with your "Apple Development" identity if you have one, so
+Signing, when you run it from source: the app is signed with your "Apple Development"
+identity if you have one, so
 macOS remembers the calendar permission across rebuilds. Otherwise it's signed ad hoc and
 macOS may ask again after a rebuild. `BACKFILL_SIGN_IDENTITY` picks another identity, or
 `-` for ad hoc.
@@ -188,6 +224,8 @@ bottom edge to resize it, and double-click anything to pick its issue.
   suggestions, the sync plan, merging what Jira has with edits made here, and
   business-unit attribution. Test data is behind its `fixtures` feature. Run its tests
   with `cargo test -p backfill-core`.
+- `crates/update`: finds a newer release on GitHub, downloads and checks it, and swaps it in
+  once backfill has quit.
 - `crates/app`: the gpui-ce window. `calendar.rs` is the week view's state and actions,
   `calendar/week.rs` draws it, and `calendar/review.rs` is the sync review. `picker.rs` is
   the issue search, and `motion.rs` the spring-animated geometry.
@@ -212,6 +250,30 @@ Steps: `n f l a del left right sync apply enter esc undo settings wait`, plus `t
 `rclick:X,Y` and `drag:X1,Y1,X2,Y2` for real input, and `shot:NAME`, which runs
 `$BACKFILL_SHOT NAME PID`. `BACKFILL_THEME=light` or `dark` overrides the
 system appearance.
+
+Builds from source never update themselves. Only release builds have the `updates`
+feature, and `BACKFILL_UPDATE_FEED` points one at another list of releases, in the shape
+GitHub's API gives them, for trying an update out.
+
+## Releasing
+
+Releases are made by hand: Actions → Release → Run workflow, or
+`gh workflow run release.yml`. Pushing to main never releases.
+[semantic-release](https://semantic-release.gitbook.io) picks the version from the
+[conventional commits](https://www.conventionalcommits.org) since the last release: `fix:`
+makes a patch release, `feat:` a minor one, and `feat!:` or a `BREAKING CHANGE:` footer
+makes 1.0. `docs:`, `refactor:`, `test:`, `ci:` and `chore:` don't release anything on
+their own. The workflow tests, commits the new version, tags it, builds and signs the app,
+and uploads `backfill-macos.zip` to the GitHub release, marked as a pre-release while the
+version is 0.x.
+
+`scripts/package-macos.sh VERSION` does the building and signing, and also works on your
+own Mac. It signs with the self-signed certificate "backfill self-signed". backfill only
+installs updates signed with the certificate it was signed with, so every release has to
+use this one: if it's lost, everyone has to download the next version by hand. The
+certificate and its key are in the repository's Actions secrets
+(`MACOS_SIGNING_CERTIFICATE`, a base64 `.p12`, and `MACOS_SIGNING_CERTIFICATE_PASSWORD`),
+and in the maintainer's login keychain. Keep a copy somewhere safe.
 
 ## Next
 

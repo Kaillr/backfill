@@ -3,6 +3,7 @@
 
 mod menu;
 mod review;
+pub(crate) mod update;
 mod week;
 
 use std::time::Duration;
@@ -310,6 +311,10 @@ pub struct Backfill {
     git_task: Option<Task<()>>,
     search_task: Option<Task<()>>,
     settings_panel: Option<(Entity<SettingsPanel>, Subscription)>,
+    update: update::Update,
+    update_task: Option<Task<()>>,
+    update_checked: Option<std::time::Instant>,
+    pending_update: update::Pending,
     _clock: Task<()>,
     _script: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -338,6 +343,7 @@ impl Backfill {
         crate::theme::assign_issue_colors(this.ws.issues.iter().map(|i| &i.key));
         this.refresh_outlook(true, cx);
         this.refresh_all(false, cx);
+        this.start_updates(cx);
         if !this.jira_configured() {
             this.open_settings(true, window, cx);
         }
@@ -349,6 +355,7 @@ impl Backfill {
                 if stale {
                     this.refresh_all(false, cx);
                 }
+                this.recheck_updates(cx);
             }
         });
         this._subscriptions.push(activation);
@@ -418,6 +425,10 @@ impl Backfill {
             git_task: None,
             search_task: None,
             settings_panel: None,
+            update: update::Update::default(),
+            update_task: None,
+            update_checked: None,
+            pending_update: update::Pending::default(),
             _clock: clock,
             _script: script::start(window, cx),
             _subscriptions: Vec::new(),
@@ -495,6 +506,8 @@ impl Backfill {
             outlook::Status::Connected { calendars } if calendars.is_empty() => Status::Problem("The Calendar app has no calendars to read".into()),
             outlook::Status::Connected { calendars } => Status::Ok(format!("Reading {}", calendars.join(", ")).into()),
         };
+        self.statuses.update = self.update_status();
+        self.statuses.update_ready = matches!(self.update, update::Update::Ready(_));
         if let Some((panel, _)) = &self.settings_panel {
             let statuses = self.statuses.clone();
             panel.update(cx, |panel, cx| panel.set_statuses(statuses, cx));
@@ -732,6 +745,9 @@ impl Backfill {
         let subscription = cx.subscribe_in(&panel, window, |this, _, event: &SettingsEvent, window, cx| match event {
             SettingsEvent::Saved => this.settings_saved(cx),
             SettingsEvent::Closed => this.close_settings(window, cx),
+            SettingsEvent::CheckForUpdatesChanged(on) => this.set_check_for_updates(*on, cx),
+            SettingsEvent::CheckForUpdates => this.check_for_updates(cx),
+            SettingsEvent::RestartToUpdate => this.restart_to_update(cx),
         });
         panel.focus_handle(cx).focus(window, cx);
         self.settings_panel = Some((panel, subscription));
@@ -1613,6 +1629,7 @@ impl Backfill {
                 )
             })
             .child(div().flex_1())
+            .children(self.render_update_button(theme, cx))
             .child(self.render_connections(theme, cx))
             .child(
                 div()

@@ -30,6 +30,8 @@ pub struct Settings {
     pub hours_per_day: f64,
     /// When the workday usually starts, as `HH:MM`.
     pub day_start: String,
+    /// Look for a newer release when backfill opens, and download it.
+    pub check_for_updates: bool,
 }
 
 impl Default for Settings {
@@ -44,6 +46,7 @@ impl Default for Settings {
             organisations: Vec::new(),
             hours_per_day: 7.5,
             day_start: "08:00".into(),
+            check_for_updates: true,
         }
     }
 }

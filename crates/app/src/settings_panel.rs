@@ -13,6 +13,7 @@ use gpui_elements::editable_text::{EditableTextState, StringStorage};
 use jiff::SignedDuration;
 
 use crate::{
+    calendar::update,
     field::field,
     picker::hint,
     store::{Secret, Settings, Store},
@@ -53,12 +54,19 @@ pub struct Statuses {
     pub toggl: Status,
     pub git: Status,
     pub calendar: Status,
+    pub update: Status,
+    /// An update is downloaded and waits for a restart.
+    pub update_ready: bool,
 }
 
 pub enum SettingsEvent {
     /// Settings were saved; reconnect whatever changed.
     Saved,
     Closed,
+    /// Checking for updates was turned on or off. That's saved straight away.
+    CheckForUpdatesChanged(bool),
+    CheckForUpdates,
+    RestartToUpdate,
 }
 
 pub struct SettingsPanel {
@@ -74,6 +82,7 @@ pub struct SettingsPanel {
     organisations: Entity<EditableTextState>,
     hours: Entity<EditableTextState>,
     day_start: Entity<EditableTextState>,
+    check_for_updates: bool,
     jira_token_saved: bool,
     toggl_token_saved: bool,
     replacing: (bool, bool),
@@ -116,6 +125,7 @@ impl SettingsPanel {
             organisations: field(&settings.organisations.join(", "), cx),
             hours: field(&format!("{}", settings.hours_per_day), cx),
             day_start: field(&settings.day_start, cx),
+            check_for_updates: settings.check_for_updates,
             store,
             jira_token_saved,
             toggl_token_saved,
@@ -159,6 +169,7 @@ impl SettingsPanel {
             organisations: list(self.text(&self.organisations, cx)),
             hours_per_day,
             day_start: self.text(&self.day_start, cx),
+            check_for_updates: self.check_for_updates,
         };
         if Settings::parse_start(&settings.day_start).is_none() {
             self.error = Some("The workday start should look like 08:00".into());
@@ -186,6 +197,17 @@ impl SettingsPanel {
         self.first_run = false;
         self.store.save("settings.json", &settings);
         cx.emit(SettingsEvent::Saved);
+        cx.notify();
+    }
+
+    /// Turns checking for updates on or off, and saves just that, so the other fields can
+    /// stay unsaved.
+    fn toggle_updates(&mut self, cx: &mut Context<Self>) {
+        self.check_for_updates = !self.check_for_updates;
+        let mut saved: Settings = self.store.load("settings.json").unwrap_or_default();
+        saved.check_for_updates = self.check_for_updates;
+        self.store.save("settings.json", &saved);
+        cx.emit(SettingsEvent::CheckForUpdatesChanged(self.check_for_updates));
         cx.notify();
     }
 
@@ -365,6 +387,77 @@ impl Render for SettingsPanel {
         body.push(section("Outlook"));
         body.push(div().text_xs().text_color(theme.muted).child("Read from the Calendar app on this Mac, which syncs your Outlook account.").into_any_element());
         body.push(status(&self.statuses.calendar));
+        body.push(section("Updates"));
+        let version = format!("backfill {}{}", update::VERSION, if update::VERSION.starts_with("0.") { " beta" } else { "" });
+        if update::ENABLED {
+            let on = self.check_for_updates;
+            body.push(
+                div()
+                    .id("check-for-updates")
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_sm()
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_updates(cx)))
+                    .child(
+                        div()
+                            .flex()
+                            .when(on, |d| d.justify_end())
+                            .w(px(30.))
+                            .h(px(18.))
+                            .p(px(2.))
+                            .rounded_full()
+                            .bg(if on { theme.focus } else { theme.line_strong })
+                            .child(div().size(px(14.)).rounded_full().bg(theme.surface)),
+                    )
+                    .child("Check for updates when backfill opens")
+                    .into_any_element(),
+            );
+            body.push(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted)
+                    .child("New versions download in the background, and are installed when backfill restarts or quits.")
+                    .into_any_element(),
+            );
+            body.push(status(&self.statuses.update));
+            let busy = matches!(self.statuses.update, Status::Working(_));
+            let button = |id: &'static str, text: &'static str, primary: bool| {
+                div()
+                    .id(id)
+                    .px_3()
+                    .py_1()
+                    .rounded_md()
+                    .text_xs()
+                    .cursor_pointer()
+                    .when(primary, |d| d.bg(theme.ink).text_color(theme.canvas).font_weight(FontWeight::MEDIUM))
+                    .when(!primary, |d| d.border_1().border_color(theme.line_strong).text_color(theme.muted).hover(|s| s.text_color(theme.ink)))
+                    .child(text)
+            };
+            body.push(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .when(self.statuses.update_ready, |d| {
+                        d.child(button("restart-to-update", "Restart to update", true).on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::RestartToUpdate))))
+                    })
+                    .when(!self.statuses.update_ready && !busy, |d| {
+                        d.child(button("check-now", "Check now", false).on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::CheckForUpdates))))
+                    })
+                    .child(div().text_xs().text_color(theme.faint).child(version))
+                    .into_any_element(),
+            );
+        } else {
+            body.push(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted)
+                    .child(format!("This is {version}, built from source, so it doesn't update itself. The releases on GitHub do."))
+                    .into_any_element(),
+            );
+        }
         self.order = order;
 
         div()

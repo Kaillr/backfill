@@ -333,6 +333,26 @@ fn sync_review_writes_every_change() {
 }
 
 #[test]
+fn restarting_to_update_waits_for_a_running_sync() {
+    let (app, mut window) = open();
+    window.update(|this, _, cx| {
+        this.update = update::Update::Ready(backfill_update::Version(0, 2, 0));
+        *this.pending_update.0.borrow_mut() = Some(("/updates/backfill.app".into(), "/Applications/backfill.app".into()));
+        cx.notify();
+    });
+    window.simulate_keystrokes("secondary-enter");
+    app.run_until_parked();
+    window.simulate_keystrokes("secondary-enter");
+    window.read(|this, _| assert!(this.sheet.as_ref().is_some_and(|s| s.running)));
+    window.update(|this, _, cx| this.restart_to_update(cx));
+    window.read(|this, _| {
+        assert_eq!(this.toast.as_ref().map(|t| t.message.as_ref()), Some("backfill can restart once the sync is done"));
+        // Still waiting to be installed.
+        assert!(this.pending_update.0.borrow().is_some());
+    });
+}
+
+#[test]
 fn command_o_opens_the_selected_issue_in_jira() {
     let (app, mut window) = open();
     let key = window.update(|this, _, _| {
