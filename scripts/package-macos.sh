@@ -34,6 +34,11 @@ if ! security find-identity -p codesigning ${BACKFILL_KEYCHAIN:+"$BACKFILL_KEYCH
     exit 1
 fi
 if [ "$version" = --check ]; then
+    # Listed isn't always usable, so sign something small, before a release spends minutes
+    # building only to find codesign can't use it.
+    probe="$(mktemp -t backfill-sign)"
+    trap 'rm -f "$probe"' EXIT
+    codesign --force --sign "$identity" "$@" "$probe"
     exit 0
 fi
 
