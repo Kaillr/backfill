@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "backfill"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "backfill-core",
  "backfill-git",
