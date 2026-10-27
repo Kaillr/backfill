@@ -18,8 +18,7 @@
       {
         "verifyConditionsCmd": "scripts/package-macos.sh --check",
         "prepareCmd": "scripts/package-macos.sh ${nextRelease.version}",
-        "publishCmd": "scripts/upload-macos.sh ${nextRelease.gitTag}",
-        "successCmd": "case ${nextRelease.version} in 0.*) gh release edit ${nextRelease.gitTag} --prerelease ;; esac"
+        "publishCmd": "scripts/upload-macos.sh ${nextRelease.gitTag}"
       }
     ],
     [

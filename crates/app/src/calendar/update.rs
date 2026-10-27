@@ -60,7 +60,8 @@ fn updater() -> Option<UpdateManager> {
     let source: Box<dyn sources::UpdateSource> = match std::env::var("BACKFILL_UPDATE_FEED") {
         Ok(feed) if feed.starts_with("http") => Box::new(sources::HttpSource::new(feed)),
         Ok(feed) => Box::new(sources::FileSource::new(feed)),
-        // While backfill is 0.x every release is a beta, marked as a pre-release on GitHub.
+        // A beta takes pre-releases too, should there be any. Releases are betas while
+        // backfill is 0.x, and say so in their names rather than being marked pre-releases.
         Err(_) => Box::new(sources::GithubSource::new(REPO, None, VERSION.starts_with("0."))),
     };
     UpdateManager::new_boxed(source, None, None).ok()

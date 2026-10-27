@@ -62,7 +62,7 @@ cp crates/app/macos/Info.plist "$app/Contents/Info.plist"
 
 # The newest release so far, so the new one can carry a delta from it. Before the first
 # release there's none, and vpk says so and carries on.
-"$vpk" download github --repoUrl "$repo" --channel osx --pre --outputDir "$releases" \
+"$vpk" download github --repoUrl "$repo" --channel osx --outputDir "$releases" \
     ${GITHUB_TOKEN:+--token "$GITHUB_TOKEN"}
 
 "$vpk" pack --packId backfill --packVersion "$version" --packTitle backfill --packAuthors backfill \

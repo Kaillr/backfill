@@ -6,10 +6,11 @@ writes nothing to Jira until you've reviewed exactly what will change.
 
 ## Install
 
-backfill is in beta. Download `backfill-osx-Setup.pkg` from the newest
-[release](https://github.com/Kaillr/backfill/releases) and open it. The installer asks
-whether to install for everyone or just you, then opens backfill. It needs a Mac with Apple
-silicon and macOS 14 or later.
+backfill is in beta. Download
+[backfill-osx-Setup.pkg](https://github.com/Kaillr/backfill/releases/latest/download/backfill-osx-Setup.pkg)
+from the [newest release](https://github.com/Kaillr/backfill/releases/latest) and open it. The
+installer asks whether to install for everyone or just you, then opens backfill. It needs a
+Mac with Apple silicon and macOS 14 or later.
 
 The installer isn't signed by Apple, so the first time macOS says it can't check it. Open
 System Settings, go to Privacy & Security and press Open Anyway next to it.
@@ -18,9 +19,8 @@ Or fetch the installer from Terminal, which skips that step, since macOS only as
 files that came through a browser:
 
 ```sh
-curl -fsSL https://api.github.com/repos/Kaillr/backfill/releases \
-  | grep -om1 'https://[^"]*/backfill-osx-Setup.pkg' \
-  | xargs curl -fsSL -o /tmp/backfill-osx-Setup.pkg
+curl -fsSL -o /tmp/backfill-osx-Setup.pkg \
+  https://github.com/Kaillr/backfill/releases/latest/download/backfill-osx-Setup.pkg
 open /tmp/backfill-osx-Setup.pkg
 ```
 
@@ -36,7 +36,7 @@ installed when you quit.
 Settings has the switch to stop looking when backfill opens, and a Check now button for
 when it's off. Every version is signed with the same certificate, so macOS keeps backfill's
 calendar access and Keychain tokens across updates. While backfill is 0.x every release is a
-beta, marked as a pre-release on GitHub.
+beta, and says so in its name.
 
 ## Run it from source
 
@@ -262,7 +262,7 @@ Releases are made by hand: Actions → Release → Run workflow, or
 makes a patch release, `feat:` a minor one, and `feat!:` or a `BREAKING CHANGE:` footer
 makes 1.0. `docs:`, `refactor:`, `test:`, `ci:` and `chore:` don't release anything on
 their own. The workflow tests, commits the new version, tags it, and makes the GitHub
-release, marked as a pre-release while the version is 0.x.
+release, named "backfill 0.x.y beta" while the version is 0.x.
 
 The release itself is built with `vpk`, Velopack's CLI (`dotnet tool install -g vpk`).
 `scripts/package-macos.sh VERSION` builds and signs the app and packs it into
