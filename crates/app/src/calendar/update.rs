@@ -20,7 +20,7 @@ use velopack::{UpdateCheck, UpdateManager, VelopackAsset, sources};
 
 use super::Backfill;
 use crate::{
-    settings_panel::Status,
+    settings::Status,
     theme::{Theme, with_alpha},
 };
 

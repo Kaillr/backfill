@@ -50,10 +50,14 @@ On macOS, `cargo run` opens backfill as an app (see `scripts/macos-runner.sh`), 
 macOS only lets apps ask for calendar access. Output still shows in the terminal, and Ctrl-C
 quits.
 
-The first time, Settings opens. Add your Jira site, email and an
-[API token](https://id.atlassian.com/manage-profile/security/api-tokens), and optionally your
-[Toggl API token](https://track.toggl.com/profile). macOS asks once whether backfill may read
+The first time, Settings opens at Jira. Add your Jira site, email and an
+[API token](https://id.atlassian.com/manage-profile/security/api-tokens) and press Connect.
+Everything else is optional: your [Toggl API token](https://track.toggl.com/profile), the
+folders with your repositories, and your workday. macOS asks once whether backfill may read
 your calendars.
+
+Settings is a window of its own, from the backfill menu or `⌘ ,`. Changes apply as you make
+them. The connections in the calendar's header open their part of it.
 
 macOS needs Xcode (for Metal). On Windows and Linux, see
 [gpui-ce's setup notes](https://github.com/gpui-ce/gpui-ce/blob/main/SETUP.md). Outlook
@@ -81,18 +85,19 @@ again while you look. Sync stays off until that's done, so if something was chan
 meanwhile, the review says so instead of overwriting it unseen. If Jira can't be reached,
 the review says why and Sync becomes Try again.
 
-If your team logs everything on certain projects, list them in Settings under "Log time only
-on these projects", such as `APP`. Suggestions, the issue search and Fill then stay inside
-those projects. Typing another project's full key, like an event's issue someone asked you to
+If your team logs everything on certain projects, pick them in Settings under Jira, from the
+projects of the issues backfill has read. Suggestions, the issue search and Fill then stay
+inside those projects. Typing another project's full key, like an event's issue someone asked you to
 log on, still finds it, marked "Outside your projects". A title that names another project's
 issue, like "SUP-55 support", is treated as if it named none, so that time goes on your main
 task. Worklogs already in Jira on other
 projects still show, and nothing is changed on them.
 
-If your Jira records which business units an issue serves, name those two custom fields under
-"Business units" in Settings. The footer then shows the week's hours credited to each unit:
-half of an issue's hours go to its business unit, the rest split evenly across its shared
-units. With the fields left empty, backfill skips this and asks Jira nothing about them.
+If your Jira records which business units an issue serves, name those two custom fields as
+`business_unit_field` and `shared_units_field` in `settings.json`. Few Jiras have them, so
+Settings leaves them out. The footer then shows the week's hours credited to each unit: half
+of an issue's hours go to its business unit, the rest split evenly across its shared units.
+With the fields left empty, backfill skips this and asks Jira nothing about them.
 
 Each change in the review has an Undo, which drops just that change: a new block goes, a
 changed one goes back to what Jira has, and a removed one comes back. `⌘ Z` brings it back
@@ -114,9 +119,10 @@ says to slow down.
 ## Git
 
 No GitHub account or token is needed. backfill reads the repositories already on your
-computer, in the folders set in Settings (`~/git` by default, one level deep). It only counts
-your own commits, by the email git commits with, and the branches you switch to. To keep
-it to work, list your GitHub organisations, such as `acme`. Git doesn't know how long you
+computer, in the folders chosen in Settings under Code (one level deep; `~/git` or another
+usual place to start with). It only counts your own commits, by the email git commits with,
+and the branches you switch to. Settings lists the repositories it found: untick the ones
+that aren't work. Git doesn't know how long you
 worked, so it draws nothing. It ranks the issues you probably worked on in the search, and
 Fill uses it to pick the day's main task.
 
@@ -245,7 +251,7 @@ for checking a state without clicking to it:
 BACKFILL_SCRIPT="n f wait sync" cargo run
 ```
 
-Steps: `n f l a del left right sync apply enter esc undo settings wait`, plus `type:TEXT`,
+Steps: `n f l a del left right sync apply enter esc undo settings wait`, plus `settings:SECTION` (such as `settings:code`), `type:TEXT`,
 `up` and `down` while the issue search is open, `key:KEYS`, `text:TEXT`, `click:X,Y`,
 `rclick:X,Y` and `drag:X1,Y1,X2,Y2` for real input, and `shot:NAME`, which runs
 `$BACKFILL_SHOT NAME PID`. `BACKFILL_THEME=light` or `dark` overrides the

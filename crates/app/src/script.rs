@@ -136,8 +136,12 @@ fn run(this: &mut Backfill, step: &str, window: &mut Window, cx: &mut Context<Ba
         "enter" => this.link(&Link, window, cx),
         "esc" => this.dismiss(&Dismiss, window, cx),
         "undo" => this.undo(&Undo, window, cx),
-        "settings" => this.open_settings_action(&crate::calendar::OpenSettings, window, cx),
+        "settings" => this.open_settings(None, cx),
         "wait" => {}
+        other if other.starts_with("settings:") => match crate::settings::Pane::named(&other["settings:".len()..]) {
+            Some(pane) => this.open_settings(Some(pane), cx),
+            None => eprintln!("BACKFILL_SCRIPT: no settings section called {other:?}"),
+        },
         other => eprintln!("BACKFILL_SCRIPT: unknown step {other:?}"),
     }
 }

@@ -25,6 +25,7 @@ use super::{
 use crate::{
     motion::{BlockKey, Entrance, Geom, Spot},
     outlook,
+    settings::CalendarFix,
     theme::{Theme, with_alpha},
 };
 
@@ -922,30 +923,18 @@ impl Backfill {
 
     /// Says what to do when Outlook meetings can't be read, across the top of the calendar.
     fn render_calendar_notice(&self, theme: &Theme, l: Layout, cx: &mut Context<Self>) -> Option<AnyElement> {
-        // What the notice's button does, if it has one.
-        enum Fix {
-            Ask,
-            OpenSettings,
-        }
-        let (body, fix) = match self.outlook {
-            outlook::Status::NotBundled => (
-                "macOS only lets apps read the calendar, and this copy of backfill was started as a plain program. Start it with cargo run, which opens it as an app.",
-                None,
-            ),
-            outlook::Status::NotAsked => (
-                "backfill reads them from the Calendar app, and macOS hasn't asked you yet whether it may.",
-                Some(Fix::Ask),
-            ),
-            outlook::Status::Denied => (
-                "backfill isn't allowed to read your calendar. Allow it under Calendars in Privacy & Security, then come back.",
-                Some(Fix::OpenSettings),
-            ),
-            outlook::Status::Restricted => (
-                "This Mac's settings, set by whoever manages it, don't let apps read the calendar.",
-                None,
-            ),
+        let body = match self.outlook {
+            outlook::Status::NotBundled => {
+                "macOS only lets apps read the calendar, and this copy of backfill was started as a plain program. Start it with cargo run, which opens it as an app."
+            }
+            outlook::Status::NotAsked => "backfill reads them from the Calendar app, and macOS hasn't asked you yet whether it may.",
+            outlook::Status::Denied => {
+                "backfill isn't allowed to read your calendar. Allow it under Calendars in Privacy & Security, then come back."
+            }
+            outlook::Status::Restricted => "This Mac's settings, set by whoever manages it, don't let apps read the calendar.",
             _ => return None,
         };
+        let fix = self.outlook.fix();
         Some(
             div()
                 .absolute()
@@ -977,8 +966,8 @@ impl Backfill {
                         .text_color(theme.canvas)
                         .cursor_pointer();
                     d.child(match fix {
-                        Fix::Ask => button.on_click(cx.listener(|this, _, _, cx| this.refresh_outlook(true, cx))).child("Allow access"),
-                        Fix::OpenSettings => button
+                        CalendarFix::Ask => button.on_click(cx.listener(|this, _, _, cx| this.refresh_outlook(true, cx))).child("Allow access"),
+                        CalendarFix::OpenPrivacy => button
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars");
                             }))

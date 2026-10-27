@@ -191,9 +191,15 @@ pub fn toggl_window(now: Timestamp) -> TimeRange {
 
 /// Your commits in `window` that name an issue, as moments, and the branches you had
 /// checked out, each from switching to it until switching away. Both only rank
-/// suggestions. Also returns how many repositories were read.
-pub fn git_activities(folders: &[PathBuf], organisations: &[String], window: TimeRange, tz: &TimeZone) -> (Vec<Activity>, usize) {
-    let repos = backfill_git::discover(folders, organisations);
+/// suggestions. Only the repositories `tracked` picks are read. Also returns how many were.
+pub fn git_activities(
+    folders: &[PathBuf],
+    tracked: impl Fn(&backfill_git::Repo) -> bool,
+    window: TimeRange,
+    tz: &TimeZone,
+) -> (Vec<Activity>, usize) {
+    let mut repos = backfill_git::discover(folders, &[]);
+    repos.retain(|repo| tracked(repo));
     let emails = backfill_git::emails(&repos);
     let mut activities = Vec::new();
     for repo in &repos {

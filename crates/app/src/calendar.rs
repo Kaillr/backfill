@@ -19,10 +19,10 @@ use backfill_core::{
 };
 use backfill_jira::Account;
 use gpui::{
-    Animated, Animation, AnimationExt, App, Context, Entity, FocusHandle, Focusable, FontWeight,
-    KeyBinding, MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
-    Subscription, Task, Window, actions, anchored, deferred, div, ease_out_quint, millis, point,
-    prelude::*, px, relative, spring,
+    Animated, Animation, AnimationExt, App, Bounds, Context, Entity, FocusHandle, Focusable, FontWeight,
+    Global, KeyBinding, MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
+    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle, WindowOptions,
+    actions, anchored, deferred, div, ease_out_quint, millis, point, prelude::*, px, relative, size, spring,
 };
 use jiff::{SignedDuration, Timestamp, Zoned, civil::Date, tz::TimeZone};
 
@@ -31,7 +31,7 @@ use crate::{
     outlook,
     picker::{self, IssuePicker, PickerEvent, Row, Search},
     script,
-    settings_panel::{SettingsEvent, SettingsPanel, Status, Statuses},
+    settings::{self, Pane, SettingsEvent, SettingsView, Status, Statuses},
     sources::{self, JiraIdentity},
     store::{Secret, Settings, Store},
     theme::{Theme, with_alpha},
@@ -81,7 +81,6 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-z", Undo, shortcut),
         KeyBinding::new("secondary-o", OpenInJira, Some(CONTEXT)),
         KeyBinding::new("secondary-enter", ReviewSync, Some(CONTEXT)),
-        KeyBinding::new("secondary-,", OpenSettings, Some(CONTEXT)),
         KeyBinding::new("secondary-r", SyncNow, Some(CONTEXT)),
         KeyBinding::new("escape", Dismiss, Some(CONTEXT)),
         KeyBinding::new("down", MenuNext, Some(menu::CONTEXT)),
@@ -310,7 +309,8 @@ pub struct Backfill {
     toggl_task: Option<Task<()>>,
     git_task: Option<Task<()>>,
     search_task: Option<Task<()>>,
-    settings_panel: Option<(Entity<SettingsPanel>, Subscription)>,
+    /// The Settings window, while it's open.
+    settings_window: Option<(WindowHandle<SettingsView>, Entity<SettingsView>, Subscription)>,
     update: update::Update,
     /// Velopack's updater, when backfill was installed with one.
     updater: Option<velopack::UpdateManager>,
@@ -323,6 +323,40 @@ pub struct Backfill {
 }
 
 const SCROLL_SPRING: gpui::SpringConfig = spring(260., 30., 1.);
+
+/// The calendar, for the menu bar, whose items act whichever window is in front.
+struct Main(WeakEntity<Backfill>);
+
+impl Global for Main {}
+
+/// Opens Settings, at `pane` if given, from the menu bar or a shortcut in any window.
+pub fn open_settings(pane: Option<Pane>, cx: &mut App) {
+    if let Some(main) = cx.try_global::<Main>().and_then(|m| m.0.upgrade()) {
+        main.update(cx, |this, cx| this.open_settings(pane, cx));
+    }
+}
+
+/// The first time, before Jira is connected, Settings opens at Jira. Call it once the
+/// calendar's window is up, so Settings opens in front of it.
+pub fn open_settings_until_connected(cx: &mut App) {
+    if let Some(main) = cx.try_global::<Main>().and_then(|m| m.0.upgrade()) {
+        main.update(cx, |this, cx| {
+            if !this.jira_configured() {
+                this.open_settings(Some(Pane::Jira), cx);
+            }
+        });
+    }
+}
+
+/// Looks for a newer version now, and shows Updates in Settings to say what came of it.
+pub fn check_for_updates(cx: &mut App) {
+    if let Some(main) = cx.try_global::<Main>().and_then(|m| m.0.upgrade()) {
+        main.update(cx, |this, cx| {
+            this.open_settings(Some(Pane::Updates), cx);
+            this.check_for_updates(cx);
+        });
+    }
+}
 
 impl Backfill {
     /// Opens on what was saved last time, then refreshes everything in the background.
@@ -346,9 +380,15 @@ impl Backfill {
         this.refresh_outlook(true, cx);
         this.refresh_all(false, cx);
         this.start_updates(cx);
-        if !this.jira_configured() {
-            this.open_settings(true, window, cx);
-        }
+        cx.set_global(Main(cx.weak_entity()));
+        // Settings closes with the calendar, so closing the calendar still quits backfill.
+        cx.on_release(|this, cx| {
+            if let Some((handle, ..)) = this.settings_window.take() {
+                handle.update(cx, |_, window, _| window.remove_window()).ok();
+            }
+        })
+        .detach();
+
         // Pick up changes made elsewhere while backfill was in the background.
         let activation = cx.observe_window_activation(window, |this, window, cx| {
             if window.is_window_active() {
@@ -432,7 +472,7 @@ impl Backfill {
             toggl_task: None,
             git_task: None,
             search_task: None,
-            settings_panel: None,
+            settings_window: None,
             update: update::Update::default(),
             updater: None,
             update_task: None,
@@ -517,12 +557,19 @@ impl Backfill {
             outlook::Status::Connected { calendars } if calendars.is_empty() => Status::Problem("The Calendar app has no calendars to read".into()),
             outlook::Status::Connected { calendars } => Status::Ok(format!("Reading {}", calendars.join(", ")).into()),
         };
+        self.statuses.calendar_fix = self.outlook.fix();
         self.statuses.update = self.update_status();
         self.statuses.update_ready = matches!(self.update, update::Update::Ready(_));
         self.statuses.updatable = self.updater.is_some();
-        if let Some((panel, _)) = &self.settings_panel {
-            let statuses = self.statuses.clone();
-            panel.update(cx, |panel, cx| panel.set_statuses(statuses, cx));
+        if let Some((_, view, _)) = &self.settings_window {
+            let mut statuses = self.statuses.clone();
+            for issue in &self.ws.issues {
+                let project = issue.key.project().to_owned();
+                if !statuses.projects.contains(&project) {
+                    statuses.projects.push(project);
+                }
+            }
+            view.update(cx, |view, cx| view.set_statuses(statuses, cx));
         }
         cx.notify();
     }
@@ -687,19 +734,19 @@ impl Backfill {
             self.push_statuses(cx);
             return;
         }
-        let organisations = self.settings.organisations.clone();
+        let settings = self.settings.clone();
         let window = self.window();
         let tz = self.ws.tz.clone();
         self.git_task = Some(cx.spawn(async move |this, cx| {
             let (activities, repos) =
-                cx.background_spawn(async move { sources::git_activities(&folders, &organisations, window, &tz) }).await;
+                cx.background_spawn(async move { sources::git_activities(&folders, |repo| settings.tracks(repo), window, &tz) }).await;
             this.update(cx, |this, cx| {
                 let moments = activities.len();
                 let (branches, commits) = activities.into_iter().partition(|a| a.source == Source::Branch);
                 this.ws.replace_activities(Source::Git, window, commits);
                 this.ws.replace_activities(Source::Branch, window, branches);
                 this.statuses.git = if repos == 0 {
-                    Status::Problem("No git repositories in those folders".into())
+                    Status::Problem("No repositories to read. Pick some under Code.".into())
                 } else {
                     Status::Ok(format!("Reading {repos} repositories: {moments} commits and branch switches around this week name an issue.").into())
                 };
@@ -749,51 +796,81 @@ impl Backfill {
         }));
     }
 
-    fn open_settings(&mut self, first_run: bool, window: &mut Window, cx: &mut Context<Self>) {
+    /// Brings the Settings window to the front, at `pane` if given, opening it if need be.
+    pub fn open_settings(&mut self, pane: Option<Pane>, cx: &mut Context<Self>) {
         let Some(store) = self.store.clone() else { return };
-        self.picker = None;
-        let statuses = self.statuses.clone();
-        let panel = cx.new(|cx| SettingsPanel::new(store, &self.settings, statuses, first_run, cx));
-        let subscription = cx.subscribe_in(&panel, window, |this, _, event: &SettingsEvent, window, cx| match event {
-            SettingsEvent::Saved => this.settings_saved(cx),
-            SettingsEvent::Closed => this.close_settings(window, cx),
-            SettingsEvent::CheckForUpdatesChanged(on) => this.set_check_for_updates(*on, cx),
-            SettingsEvent::CheckForUpdates => this.check_for_updates(cx),
-            SettingsEvent::RestartToUpdate => this.restart_to_update(cx),
+        if let Some((handle, ..)) = &self.settings_window {
+            let shown = handle.update(cx, |view, window, cx| {
+                if let Some(pane) = pane {
+                    view.show(pane, window, cx);
+                }
+                window.activate();
+            });
+            if shown.is_ok() {
+                return;
+            }
+        }
+        let (settings, statuses) = (self.settings.clone(), self.statuses.clone());
+        let pane = pane.unwrap_or(Pane::Jira);
+        let options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(settings::WINDOW_W), px(settings::WINDOW_H)), cx))),
+            titlebar: Some(TitlebarOptions {
+                title: Some("Settings".into()),
+                appears_transparent: true,
+                traffic_light_position: Some(point(px(18.), px(settings::TOP_H / 2. - 7.))),
+            }),
+            app_owns_titlebar_drag: true,
+            window_min_size: Some(size(px(640.), px(440.))),
+            is_minimizable: false,
+            ..Default::default()
+        };
+        let opened = cx.open_window(options, |window, cx| {
+            let view = cx.new(|cx| SettingsView::new(store, settings, statuses, pane, window, cx));
+            view.update(cx, |view, cx| view.focus_first_field(window, cx));
+            view
         });
-        panel.focus_handle(cx).focus(window, cx);
-        self.settings_panel = Some((panel, subscription));
+        let Some((handle, view)) = opened.ok().and_then(|handle| Some((handle, handle.entity(cx).ok()?))) else { return };
+        let subscription = cx.subscribe(&view, Self::settings_changed);
+        self.settings_window = Some((handle, view, subscription));
         self.push_statuses(cx);
     }
 
-    pub fn open_settings_action(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_settings(false, window, cx);
-    }
-
-    fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings_panel = None;
-        window.focus(&self.focus, cx);
-        cx.notify();
-    }
-
-    /// Reconnects everything with the new settings.
-    fn settings_saved(&mut self, cx: &mut Context<Self>) {
-        let Some(store) = &self.store else { return };
-        self.settings = store.load("settings.json").unwrap_or_default();
-        self.jira_token = store.secret(Secret::JiraToken);
-        self.toggl_token = store.secret(Secret::TogglToken);
+    /// Applies a change made in Settings, reconnecting only what it touched.
+    fn settings_changed(&mut self, view: Entity<SettingsView>, event: &SettingsEvent, cx: &mut Context<Self>) {
+        self.settings = view.read(cx).settings().clone();
         self.ws.settings = self.settings.workday();
-        self.jira_identity = None;
-        self.pulled.clear();
-        self.unknown_keys.clear();
-        if self.jira_configured() {
-            self.statuses.jira = Status::Working("Connecting to Jira".into());
+        let Some(store) = self.store.clone() else { return };
+        match event {
+            SettingsEvent::JiraChanged => {
+                self.jira_token = store.secret(Secret::JiraToken);
+                self.jira_identity = None;
+                self.pulled.clear();
+                self.unknown_keys.clear();
+                self.statuses.jira = Status::Off;
+                self.pull_jira(true, cx);
+            }
+            SettingsEvent::TogglChanged => {
+                self.toggl_token = store.secret(Secret::TogglToken);
+                if self.toggl_token.is_some() {
+                    self.statuses.toggl = Status::Working("Connecting to Toggl".into());
+                } else {
+                    // Disconnected: its timers go too.
+                    self.toggl = backfill_toggl::Cache::default();
+                    store.save("toggl.json", &self.toggl);
+                    self.apply_toggl();
+                }
+                self.sync_toggl(true, cx);
+            }
+            SettingsEvent::CodeChanged => {
+                self.git_task = None;
+                self.read_git(cx);
+            }
+            SettingsEvent::WorkChanged => {}
+            SettingsEvent::AskForCalendar => self.refresh_outlook(true, cx),
+            SettingsEvent::CheckForUpdatesChanged(on) => self.set_check_for_updates(*on, cx),
+            SettingsEvent::CheckForUpdates => self.check_for_updates(cx),
+            SettingsEvent::RestartToUpdate => self.restart_to_update(cx),
         }
-        if self.toggl_token.is_some() {
-            self.statuses.toggl = Status::Working("Connecting to Toggl".into());
-        }
-        self.git_task = None;
-        self.refresh_all(true, cx);
         self.push_statuses(cx);
     }
 
@@ -1042,7 +1119,7 @@ impl Backfill {
         }
         if self.jira_account().is_none() {
             self.show_toast("Connect Jira in Settings to sync", false, cx);
-            self.open_settings(false, window, cx);
+            self.open_settings(Some(Pane::Jira), cx);
             return;
         }
         // The review opens at once and shows the check; Sync waits for it.
@@ -1506,7 +1583,6 @@ impl Render for Backfill {
             .on_action(cx.listener(Self::apply_sync))
             .on_action(cx.listener(Self::dismiss))
             .on_action(cx.listener(Self::undo))
-            .on_action(cx.listener(Self::open_settings_action))
             .on_action(cx.listener(Self::sync_now))
             .on_action(cx.listener(Self::open_in_jira))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
@@ -1540,26 +1616,6 @@ impl Render for Backfill {
             })
             .when_some(self.render_menu(&theme, cx), |root, menu| root.child(menu))
             .when(self.sheet.is_some(), |root| root.child(self.render_sheet(&theme, cx)))
-            .when_some(self.settings_panel.as_ref().map(|(panel, _)| panel.clone()), |root, panel| {
-                root.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .size_full()
-                        .child(
-                            div()
-                                .id("settings-scrim")
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .size_full()
-                                .bg(theme.scrim)
-                                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.close_settings(window, cx))),
-                        )
-                        .child(div().absolute().top_0().bottom_0().right_0().child(panel)),
-                )
-            })
     }
 }
 
@@ -1696,48 +1752,58 @@ impl Backfill {
                         if connected {
                             this.review_sync(&ReviewSync, window, cx)
                         } else {
-                            this.open_settings(false, window, cx)
+                            this.open_settings(Some(Pane::Jira), cx)
                         }
                     }))
                     .child(label)
             })
     }
 
-    /// One dot per connection, coloured by how it's doing. Clicking opens Settings, where
-    /// each says more.
+    /// One dot per connection, coloured by how it's doing. Each opens its part of Settings,
+    /// where it says more.
     fn render_connections(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
-        let dot = |name: &'static str, status: &Status| {
-            let color = match status {
-                Status::Off => theme.faint,
-                Status::Working(_) => theme.focus,
-                Status::Ok(_) => theme.ok,
-                Status::Problem(_) => theme.danger,
-            };
+        let item = |pane: Pane| {
             div()
+                .id(("connection", pane as usize))
+                .occlude()
                 .flex()
                 .items_center()
                 .gap_1()
-                .child(div().size(px(7.)).rounded_full().bg(color))
+                .px_1p5()
+                .py_1()
+                .rounded_md()
+                .cursor_pointer()
+                .hover(|s| s.bg(theme.line))
+                .on_click(cx.listener(move |this, _, _, cx| this.open_settings(Some(pane), cx)))
+        };
+        let dot = |pane: Pane, name: &'static str, status: &Status| {
+            item(pane)
+                .child(div().size(px(7.)).rounded_full().bg(status.color(theme)))
                 .child(div().text_color(if matches!(status, Status::Off) { theme.faint } else { theme.muted }).child(name))
         };
         div()
-            .id("connections")
-            .occlude()
             .flex()
             .items_center()
-            .gap_3()
-            .px_2()
-            .py_1()
-            .rounded_md()
+            .gap_1()
             .text_xs()
-            .cursor_pointer()
-            .hover(|s| s.bg(theme.line))
-            .on_click(cx.listener(|this, _, window, cx| this.open_settings(false, window, cx)))
-            .child(dot("Jira", &self.statuses.jira))
-            .child(dot("Toggl", &self.statuses.toggl))
-            .child(dot("Outlook", &self.statuses.calendar))
-            .child(dot("Git", &self.statuses.git))
-            .child(div().pl_1().text_sm().text_color(theme.muted).child("Settings"))
+            .child(dot(Pane::Jira, "Jira", &self.statuses.jira))
+            .child(dot(Pane::Toggl, "Toggl", &self.statuses.toggl))
+            .child(dot(Pane::Calendar, "Outlook", &self.statuses.calendar))
+            .child(dot(Pane::Code, "Git", &self.statuses.git))
+            .child(
+                div()
+                    .id("open-settings")
+                    .occlude()
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .text_sm()
+                    .text_color(theme.muted)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.line).text_color(theme.ink))
+                    .on_click(cx.listener(|this, _, _, cx| this.open_settings(None, cx)))
+                    .child("Settings"),
+            )
     }
 
     fn render_footer(&self, theme: &Theme) -> impl IntoElement {

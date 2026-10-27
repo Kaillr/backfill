@@ -3,9 +3,11 @@
 
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+
+use backfill_git::Repo;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -20,12 +22,16 @@ pub struct Settings {
     /// Jira projects time is logged on, such as `APP`. Empty means any.
     pub jira_projects: Vec<String>,
     /// The name of the Jira field with an issue's business unit. Empty skips business units.
+    /// Set in this file only: few Jiras have such fields.
     pub business_unit_field: String,
     /// The name of the Jira field with more business units the issue serves.
     pub shared_units_field: String,
     /// Folders with git repositories, searched one level deep.
     pub code_folders: Vec<String>,
-    /// Only repositories from these GitHub organisations. Empty means all.
+    /// Repositories in those folders that aren't read, by path. All the others are.
+    pub ignored_repositories: Vec<String>,
+    /// From before repositories were picked one by one: only repositories from these GitHub
+    /// organisations. Picking any repository in Settings replaces it with the list above.
     pub organisations: Vec<String>,
     pub hours_per_day: f64,
     /// When the workday usually starts, as `HH:MM`.
@@ -42,7 +48,8 @@ impl Default for Settings {
             jira_projects: Vec::new(),
             business_unit_field: String::new(),
             shared_units_field: String::new(),
-            code_folders: vec!["~/git".into()],
+            code_folders: default_code_folder().into_iter().collect(),
+            ignored_repositories: Vec::new(),
             organisations: Vec::new(),
             hours_per_day: 7.5,
             day_start: "08:00".into(),
@@ -51,7 +58,24 @@ impl Default for Settings {
     }
 }
 
+/// The first of the usual places for repositories that this Mac has.
+fn default_code_folder() -> Option<String> {
+    let home = dirs::home_dir()?;
+    ["git", "code", "src", "Developer", "Projects", "repos"]
+        .into_iter()
+        .find(|name| home.join(name).is_dir())
+        .map(|name| format!("~/{name}"))
+}
+
 impl Settings {
+    /// Whether git activity is read from `repo`.
+    pub fn tracks(&self, repo: &Repo) -> bool {
+        let ignored = self.ignored_repositories.iter().any(|p| Path::new(p) == repo.path);
+        let in_organisation = self.organisations.is_empty()
+            || repo.origin.as_deref().is_some_and(|o| backfill_git::in_organisation(o, &self.organisations));
+        !ignored && in_organisation
+    }
+
     /// Whether hours are credited to business units.
     pub fn business_units(&self) -> bool {
         !self.business_unit_field.trim().is_empty() || !self.shared_units_field.trim().is_empty()
@@ -221,6 +245,18 @@ mod tests {
     fn reads_project_keys_however_they_are_typed() {
         let settings = Settings { jira_projects: vec!["app".into(), " SUP- ".into(), "not a key".into()], ..Settings::default() };
         assert_eq!(settings.projects(), ["APP", "SUP"]);
+    }
+
+    #[test]
+    fn reads_every_repository_except_the_ignored_ones() {
+        let repo = |path: &str, owner: &str| Repo { path: PathBuf::from(path), origin: Some(format!("https://github.com/{owner}/x")) };
+        let mut settings = Settings { ignored_repositories: vec!["/code/b".into()], ..Settings::default() };
+        assert!(settings.tracks(&repo("/code/a", "acme")));
+        assert!(!settings.tracks(&repo("/code/b", "acme")));
+        // Older settings that named organisations still leave the others out.
+        settings.organisations = vec!["acme".into()];
+        assert!(!settings.tracks(&repo("/code/c", "other")));
+        assert!(settings.tracks(&repo("/code/a", "acme")));
     }
 
     #[test]

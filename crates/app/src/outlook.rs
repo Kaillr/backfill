@@ -3,7 +3,7 @@
 use backfill_core::{Activity, ActivityId, Source, TimeRange, activity::cancelled_title};
 use backfill_mac_calendar::{self as mac, Access, Calendar, CalendarKind};
 
-use crate::sources::stable_id;
+use crate::{settings::CalendarFix, sources::stable_id};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Status {
@@ -22,6 +22,17 @@ pub enum Status {
     Restricted,
     /// Reading these calendars.
     Connected { calendars: Vec<String> },
+}
+
+impl Status {
+    /// What the user can do to let backfill read the calendar, if anything.
+    pub fn fix(&self) -> Option<CalendarFix> {
+        match self {
+            Status::NotAsked => Some(CalendarFix::Ask),
+            Status::Denied => Some(CalendarFix::OpenPrivacy),
+            _ => None,
+        }
+    }
 }
 
 pub struct Load {
