@@ -301,6 +301,30 @@ fn the_calendar_scrolls_through_the_whole_day() {
 }
 
 #[test]
+fn today_moves_on_at_midnight_and_this_week_follows() {
+    let (_app, mut window) = open();
+    window.update(|this, _, cx| this.set_today(date(2026, 10, 29), cx));
+    window.read(|this, _| {
+        assert_eq!(this.today, date(2026, 10, 29));
+        assert_eq!(this.week, MONDAY);
+    });
+    // Over the weekend, into the next week.
+    window.update(|this, _, cx| this.set_today(date(2026, 11, 2), cx));
+    window.read(|this, _| assert_eq!(this.week, date(2026, 11, 2)));
+}
+
+#[test]
+fn a_new_day_leaves_another_week_on_show() {
+    let (_app, mut window) = open();
+    window.simulate_keystrokes("left");
+    window.update(|this, _, cx| this.set_today(date(2026, 11, 2), cx));
+    window.read(|this, _| {
+        assert_eq!(this.today, date(2026, 11, 2));
+        assert_eq!(this.week, add_days(MONDAY, -7));
+    });
+}
+
+#[test]
 fn header_buttons_still_click() {
     let (_app, mut window) = open();
     // The "›" button: after the traffic lights and the "‹" button.

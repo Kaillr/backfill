@@ -350,6 +350,7 @@ impl Backfill {
         // Pick up changes made elsewhere while backfill was in the background.
         let activation = cx.observe_window_activation(window, |this, window, cx| {
             if window.is_window_active() {
+                this.set_today(Zoned::now().date(), cx);
                 this.refresh_outlook(false, cx);
                 let stale = this.last_refresh.is_none_or(|at| at.elapsed() > Duration::from_secs(5 * 60));
                 if stale {
@@ -367,11 +368,16 @@ impl Backfill {
         let week = initial_week(&ws, today);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        // Keeps the "now" line moving, and rereads the calendar every couple of minutes.
+        // Keeps the "now" line moving, moves today on at midnight, and rereads the calendar
+        // every couple of minutes.
         let clock = cx.spawn(async move |this, cx| {
             for tick in 1_u64.. {
                 cx.background_executor().timer(Duration::from_secs(30)).await;
                 let alive = this.update(cx, |this, cx| {
+                    // Tests keep the day they were given.
+                    if this.store.is_some() {
+                        this.set_today(Zoned::now().date(), cx);
+                    }
                     if tick % 4 == 0 && matches!(this.outlook, outlook::Status::Connected { .. }) {
                         this.refresh_outlook(false, cx);
                     }
@@ -842,6 +848,20 @@ impl Backfill {
             .ok();
         });
         self.toast = Some(Toast { message: message.into(), undo, generation, _task: task });
+        cx.notify();
+    }
+
+    /// Moves today on when the date changes while backfill is open, and the view with it
+    /// when it was showing this week.
+    fn set_today(&mut self, today: Date, cx: &mut Context<Self>) {
+        if today == self.today {
+            return;
+        }
+        let was_this_week = self.week == week_start(self.today);
+        self.today = today;
+        if was_this_week {
+            self.set_week(week_start(today), cx);
+        }
         cx.notify();
     }
 
