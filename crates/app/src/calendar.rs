@@ -312,6 +312,8 @@ pub struct Backfill {
     search_task: Option<Task<()>>,
     settings_panel: Option<(Entity<SettingsPanel>, Subscription)>,
     update: update::Update,
+    /// Velopack's updater, when backfill was installed with one.
+    updater: Option<velopack::UpdateManager>,
     update_task: Option<Task<()>>,
     update_checked: Option<std::time::Instant>,
     pending_update: update::Pending,
@@ -432,6 +434,7 @@ impl Backfill {
             search_task: None,
             settings_panel: None,
             update: update::Update::default(),
+            updater: None,
             update_task: None,
             update_checked: None,
             pending_update: update::Pending::default(),
@@ -514,6 +517,7 @@ impl Backfill {
         };
         self.statuses.update = self.update_status();
         self.statuses.update_ready = matches!(self.update, update::Update::Ready(_));
+        self.statuses.updatable = self.updater.is_some();
         if let Some((panel, _)) = &self.settings_panel {
             let statuses = self.statuses.clone();
             panel.update(cx, |panel, cx| panel.set_statuses(statuses, cx));

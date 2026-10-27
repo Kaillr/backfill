@@ -360,8 +360,7 @@ fn sync_review_writes_every_change() {
 fn restarting_to_update_waits_for_a_running_sync() {
     let (app, mut window) = open();
     window.update(|this, _, cx| {
-        this.update = update::Update::Ready(backfill_update::Version(0, 2, 0));
-        *this.pending_update.0.borrow_mut() = Some(("/updates/backfill.app".into(), "/Applications/backfill.app".into()));
+        this.update = update::Update::Ready("0.2.0".into());
         cx.notify();
     });
     window.simulate_keystrokes("secondary-enter");
@@ -372,7 +371,7 @@ fn restarting_to_update_waits_for_a_running_sync() {
     window.read(|this, _| {
         assert_eq!(this.toast.as_ref().map(|t| t.message.as_ref()), Some("backfill can restart once the sync is done"));
         // Still waiting to be installed.
-        assert!(this.pending_update.0.borrow().is_some());
+        assert_eq!(this.update, update::Update::Ready("0.2.0".into()));
     });
 }
 

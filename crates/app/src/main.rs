@@ -16,6 +16,10 @@ use gpui::{
 use gpui_elements::editable_text::actions::{DEFAULT_INPUT_CONTEXT, default_bindings};
 
 fn main() {
+    // First, before anything else: the installer and the updater run backfill to finish their
+    // work, and Velopack handles that here. A downloaded update waits for the Restart to
+    // update button, or for backfill to quit, rather than restarting it as soon as it opens.
+    velopack::VelopackApp::build().set_auto_apply_on_startup(false).run();
     gpui_platform::application()
         .with_quit_mode(QuitMode::LastWindowClosed)
         .run(|cx: &mut App| {

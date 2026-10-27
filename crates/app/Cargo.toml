@@ -5,11 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[features]
-# Release builds check GitHub for updates and install them. Builds from source leave it off,
-# so they never replace themselves with a release. See scripts/package-macos.sh.
-updates = []
-
 [dependencies]
 backfill-core.workspace = true
 backfill-git.workspace = true
@@ -17,9 +12,9 @@ backfill-http.workspace = true
 backfill-jira.workspace = true
 backfill-mac-calendar.workspace = true
 backfill-toggl.workspace = true
-backfill-update.workspace = true
 dirs = "7"
 keyring = "4"
+velopack = "1.2"
 serde.workspace = true
 serde_json.workspace = true
 gpui.workspace = true

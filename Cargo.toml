@@ -15,7 +15,6 @@ backfill-toggl = { path = "crates/toggl" }
 backfill-jira = { path = "crates/jira" }
 backfill-git = { path = "crates/git" }
 backfill-mac-calendar = { path = "crates/mac-calendar" }
-backfill-update = { path = "crates/update" }
 gpui = { package = "gpui-ce", version = "0.3.0" }
 gpui_platform = { package = "gpui_ce_platform", version = "0.3.0" }
 gpui_elements = { package = "gpui_ce_elements", version = "0.3.0" }

@@ -1,7 +1,7 @@
-//! The little HTTP that the Jira and Toggl clients and the updater need, behind a trait so
-//! they can be tested with canned responses instead of real accounts.
+//! The little HTTP that the Jira and Toggl clients need, behind a trait so they can be
+//! tested with canned responses instead of real accounts.
 
-use std::{path::Path, time::Duration};
+use std::time::Duration;
 
 use base64::Engine as _;
 
@@ -107,27 +107,6 @@ impl Transport for Http {
         let status = response.status().as_u16();
         let body = response.body_mut().read_to_string().unwrap_or_default();
         Ok(Response { status, body, retry_after })
-    }
-}
-
-impl Http {
-    /// Saves what `url` returns to `path`, following redirects. For files too big to read
-    /// into a string, such as an app update.
-    pub fn download(&self, url: &str, path: &Path) -> Result<(), String> {
-        let mut response = self
-            .agent
-            .get(url)
-            .config()
-            .timeout_global(Some(Duration::from_secs(10 * 60)))
-            .build()
-            .call()
-            .map_err(|e| e.to_string())?;
-        if !response.status().is_success() {
-            return Err(format!("the download answered {}", response.status().as_u16()));
-        }
-        let mut file = std::fs::File::create(path).map_err(|e| e.to_string())?;
-        std::io::copy(&mut response.body_mut().as_reader(), &mut file).map_err(|e| e.to_string())?;
-        Ok(())
     }
 }
 

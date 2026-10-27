@@ -6,32 +6,32 @@ writes nothing to Jira until you've reviewed exactly what will change.
 
 ## Install
 
-backfill is in beta. Download `backfill-macos.zip` from the newest
-[release](https://github.com/Kaillr/backfill/releases), unzip it and move `backfill.app` to
-Applications. It needs a Mac with Apple silicon and macOS 14 or later.
+backfill is in beta. Download `backfill-osx-Setup.pkg` from the newest
+[release](https://github.com/Kaillr/backfill/releases) and open it. The installer asks
+whether to install for everyone or just you, then opens backfill. It needs a Mac with Apple
+silicon and macOS 14 or later.
 
-backfill is signed with its own certificate rather than one from Apple, so the first time
-you open it macOS says it can't check it. Open System Settings, go to Privacy & Security and
-press Open Anyway next to backfill. After that it opens like any other app.
+The installer isn't signed by Apple, so the first time macOS says it can't check it. Open
+System Settings, go to Privacy & Security and press Open Anyway next to it.
 
-Or install it from Terminal, which skips that step, since macOS only asks about apps that
-came through a browser:
+Or fetch the installer from Terminal, which skips that step, since macOS only asks about
+files that came through a browser:
 
 ```sh
 curl -fsSL https://api.github.com/repos/Kaillr/backfill/releases \
-  | grep -om1 'https://[^"]*/backfill-macos.zip' \
-  | xargs curl -fsSL -o /tmp/backfill-macos.zip
-ditto -x -k /tmp/backfill-macos.zip /Applications
-open /Applications/backfill.app
+  | grep -om1 'https://[^"]*/backfill-osx-Setup.pkg' \
+  | xargs curl -fsSL -o /tmp/backfill-osx-Setup.pkg
+open /tmp/backfill-osx-Setup.pkg
 ```
 
 ## Updates
 
-backfill looks for a newer release when it opens, and again when you come back to it after
-half a day. It downloads it in the background and checks it before offering it: it has to be
-signed with backfill's certificate, and be the version the release says. Then **Restart to
-update** shows in the header. Pressing it quits backfill, puts the new version in place and
-opens it. If you'd rather not restart now, the update is installed when you quit.
+backfill updates itself with [Velopack](https://velopack.io). It looks for a newer release
+when it opens, and again when you come back to it after half a day, and downloads it in the
+background. Each release carries a delta from the one before, so that's usually well under a
+megabyte. Then **Restart to update** shows in the header. Pressing it quits backfill, puts
+the new version in place and opens it. If you'd rather not restart now, the update is
+installed when you quit.
 
 Settings has the switch to stop looking when backfill opens, and a Check now button for
 when it's off. Every version is signed with the same certificate, so macOS keeps backfill's
@@ -65,7 +65,7 @@ meetings aren't available there yet.
   meetings are part of the main task) and `toggl.json`. Set `BACKFILL_DATA_DIR` to use another
   folder for trying things out. That run doesn't read or write the Keychain, and tokens
   entered in it are forgotten when backfill quits.
-- **Downloaded updates** wait in `~/Library/Caches/backfill/updates` until they're installed.
+- **Downloaded updates** wait in `~/Library/Caches/velopack/backfill` until they're installed.
 
 ## Jira
 
@@ -224,8 +224,6 @@ bottom edge to resize it, and double-click anything to pick its issue.
   suggestions, the sync plan, merging what Jira has with edits made here, and
   business-unit attribution. Test data is behind its `fixtures` feature. Run its tests
   with `cargo test -p backfill-core`.
-- `crates/update`: finds a newer release on GitHub, downloads and checks it, and swaps it in
-  once backfill has quit.
 - `crates/app`: the gpui-ce window. `calendar.rs` is the week view's state and actions,
   `calendar/week.rs` draws it, and `calendar/review.rs` is the sync review. `picker.rs` is
   the issue search, and `motion.rs` the spring-animated geometry.
@@ -251,9 +249,9 @@ Steps: `n f l a del left right sync apply enter esc undo settings wait`, plus `t
 `$BACKFILL_SHOT NAME PID`. `BACKFILL_THEME=light` or `dark` overrides the
 system appearance.
 
-Builds from source never update themselves. Only release builds have the `updates`
-feature, and `BACKFILL_UPDATE_FEED` points one at another list of releases, in the shape
-GitHub's API gives them, for trying an update out.
+Builds from source never update themselves: only the installer puts Velopack's updater
+inside the app. `BACKFILL_UPDATE_FEED` points an installed copy at another Velopack feed, a
+folder or a URL, for trying an update out.
 
 ## Releasing
 
@@ -263,14 +261,19 @@ Releases are made by hand: Actions → Release → Run workflow, or
 [conventional commits](https://www.conventionalcommits.org) since the last release: `fix:`
 makes a patch release, `feat:` a minor one, and `feat!:` or a `BREAKING CHANGE:` footer
 makes 1.0. `docs:`, `refactor:`, `test:`, `ci:` and `chore:` don't release anything on
-their own. The workflow tests, commits the new version, tags it, builds and signs the app,
-and uploads `backfill-macos.zip` to the GitHub release, marked as a pre-release while the
-version is 0.x.
+their own. The workflow tests, commits the new version, tags it, and makes the GitHub
+release, marked as a pre-release while the version is 0.x.
 
-`scripts/package-macos.sh VERSION` does the building and signing, and also works on your
-own Mac. It signs with the self-signed certificate "backfill self-signed". backfill only
-installs updates signed with the certificate it was signed with, so every release has to
-use this one: if it's lost, everyone has to download the next version by hand. The
+The release itself is built with `vpk`, Velopack's CLI (`dotnet tool install -g vpk`).
+`scripts/package-macos.sh VERSION` builds and signs the app and packs it into
+`target/velopack`: the installer, the full package, a delta from the previous release
+(downloaded first), and the update feed. `scripts/upload-macos.sh TAG` adds them to the
+release. The packaging script also hands the installed app to the user who installed it, so
+updating it never needs an admin password.
+
+The app is signed with the self-signed certificate "backfill self-signed". Updates don't
+depend on it, but it's what makes each version the same app to macOS, so calendar access and
+Keychain tokens carry over. If it's lost, the next version asks for those again. The
 certificate and its key are in the repository's Actions secrets
 (`MACOS_SIGNING_CERTIFICATE`, a base64 `.p12`, and `MACOS_SIGNING_CERTIFICATE_PASSWORD`),
 and in the maintainer's login keychain. Keep a copy somewhere safe.

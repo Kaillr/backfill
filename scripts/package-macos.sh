@@ -1,15 +1,18 @@
 #!/bin/sh
-# Builds backfill.app for a release and zips it as target/dist/backfill-macos.zip.
+# Builds a backfill release with Velopack, in target/velopack: the installer
+# (backfill-osx-Setup.pkg), the full package, a delta from the release before, and the feed
+# the app reads its updates from.
 #
-#   scripts/package-macos.sh 0.2.0    sets the version in the source, then builds, signs and zips
-#   scripts/package-macos.sh --check  only checks that the signing certificate is there
+#   scripts/package-macos.sh 0.2.0    sets the version in the source, then builds and packs
+#   scripts/package-macos.sh --check  only checks that codesign can use the certificate
 #
 # semantic-release runs it with the version it's about to release (see .releaserc.json), so
-# the release commit, the tag and the app all say the same version.
+# the release commit, the tag and the app all say the same version. Packing needs vpk, the
+# Velopack CLI (`dotnet tool install -g vpk`), and scripts/upload-macos.sh publishes the result.
 #
-# The app is signed with backfill's own self-signed certificate, and it only installs an
-# update signed with that same certificate, so every release has to use it. Losing it means
-# everyone has to download the next version by hand. BACKFILL_SIGN_IDENTITY names it
+# The app is signed with backfill's own self-signed certificate. It isn't what updates are
+# checked with, but it keeps the app the same app to macOS from one version to the next, so
+# its calendar access and Keychain items carry over. BACKFILL_SIGN_IDENTITY names it
 # ("backfill self-signed" by default) and BACKFILL_KEYCHAIN says which keychain it's in,
 # when that isn't one macOS searches anyway, as on CI.
 set -eu
@@ -19,6 +22,8 @@ if [ $# -ne 1 ]; then
     exit 2
 fi
 identity="${BACKFILL_SIGN_IDENTITY:-backfill self-signed}"
+vpk="${VPK:-vpk}"
+repo=https://github.com/Kaillr/backfill
 cd "$(dirname "$0")/.."
 
 if [ -n "${BACKFILL_KEYCHAIN:-}" ]; then
@@ -27,8 +32,7 @@ fi
 version="$1"
 shift
 
-# Untrusted is fine: macOS never checks this certificate against a root, only that an
-# update was signed with it.
+# Untrusted is fine: nothing checks this certificate against a root.
 if ! security find-identity -p codesigning ${BACKFILL_KEYCHAIN:+"$BACKFILL_KEYCHAIN"} | grep -q "\"$identity\""; then
     echo "package-macos: no signing identity called \"$identity\"" >&2
     exit 1
@@ -47,16 +51,32 @@ perl -pi -e 'if (!$done && s/^version = "[^"]*"/version = "'"$version"'"/) { $do
 perl -0pi -e 's#(<key>CFBundle(?:ShortVersionString|Version)</key>\s*<string>)[^<]*#${1}'"$version"'#g' \
     crates/app/macos/Info.plist
 
-cargo build --release -p backfill --features updates
+cargo build --release -p backfill
 
-dist=target/dist
-app="$dist/backfill.app"
-rm -rf "$dist"
-mkdir -p "$app/Contents/MacOS"
+app=target/dist/backfill.app
+releases=target/velopack
+rm -rf target/dist "$releases"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp target/release/backfill "$app/Contents/MacOS/backfill"
 cp crates/app/macos/Info.plist "$app/Contents/Info.plist"
-codesign --force --sign "$identity" "$@" "$app"
-codesign --verify --deep --strict "$app"
-# Without extended attributes, so nothing but the signed files goes in the zip.
-ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl "$app" "$dist/backfill-macos.zip"
-echo "package-macos: $dist/backfill-macos.zip is backfill $version"
+
+# The newest release so far, so the new one can carry a delta from it. Before the first
+# release there's none, and vpk says so and carries on.
+"$vpk" download github --repoUrl "$repo" --channel osx --pre --outputDir "$releases" \
+    ${GITHUB_TOKEN:+--token "$GITHUB_TOKEN"}
+
+"$vpk" pack --packId backfill --packVersion "$version" --packTitle backfill --packAuthors backfill \
+    --packDir "$app" --mainExe backfill --channel osx --noPortable --outputDir "$releases" \
+    --signAppIdentity "$identity" --signEntitlements crates/app/macos/backfill.entitlements "$@"
+
+# The installer leaves the app owned by root, so its first update would ask for an admin
+# password. Hand it to whoever installed it instead.
+installer="$releases/backfill-osx-Setup.pkg"
+expanded="$(mktemp -d)/installer"
+pkgutil --expand "$installer" "$expanded"
+perl -0pi -e 's|\A(#!/bin/sh\n)|${1}chown -R "\$USER" "\$2/backfill.app"\n|' "$expanded"/*.pkg/Scripts/postinstall
+rm "$installer"
+pkgutil --flatten "$expanded" "$installer"
+rm -rf "$(dirname "$expanded")"
+
+echo "package-macos: backfill $version is in $releases"

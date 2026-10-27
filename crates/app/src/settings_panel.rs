@@ -57,6 +57,8 @@ pub struct Statuses {
     pub update: Status,
     /// An update is downloaded and waits for a restart.
     pub update_ready: bool,
+    /// backfill was installed with its updater, rather than built from source.
+    pub updatable: bool,
 }
 
 pub enum SettingsEvent {
@@ -389,7 +391,7 @@ impl Render for SettingsPanel {
         body.push(status(&self.statuses.calendar));
         body.push(section("Updates"));
         let version = format!("backfill {}{}", update::VERSION, if update::VERSION.starts_with("0.") { " beta" } else { "" });
-        if update::ENABLED {
+        if self.statuses.updatable {
             let on = self.check_for_updates;
             body.push(
                 div()
@@ -454,7 +456,7 @@ impl Render for SettingsPanel {
                 div()
                     .text_xs()
                     .text_color(theme.muted)
-                    .child(format!("This is {version}, built from source, so it doesn't update itself. The releases on GitHub do."))
+                    .child(format!("This is {version}, built from source, so it doesn't update itself. Installed from GitHub, it does."))
                     .into_any_element(),
             );
         }
