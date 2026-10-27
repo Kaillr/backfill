@@ -511,7 +511,9 @@ impl Backfill {
             outlook::Status::Starting => Status::Working("Reading the calendar".into()),
             outlook::Status::Unsupported => Status::Off,
             outlook::Status::NotBundled => Status::Problem("macOS only lets apps read the calendar. Start backfill with cargo run.".into()),
+            outlook::Status::NotAsked => Status::Problem("macOS hasn't asked you yet. Press Allow access above the calendar.".into()),
             outlook::Status::Denied => Status::Problem("backfill isn't allowed to read your calendar. Allow it under Calendars in Privacy & Security.".into()),
+            outlook::Status::Restricted => Status::Problem("This Mac's settings don't let apps read the calendar".into()),
             outlook::Status::Connected { calendars } if calendars.is_empty() => Status::Problem("The Calendar app has no calendars to read".into()),
             outlook::Status::Connected { calendars } => Status::Ok(format!("Reading {}", calendars.join(", ")).into()),
         };

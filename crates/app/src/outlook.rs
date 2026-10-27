@@ -13,8 +13,13 @@ pub enum Status {
     Unsupported,
     /// Started outside the app bundle, so macOS won't show the permission prompt.
     NotBundled,
-    /// Calendar access was refused, or a policy blocks it.
+    /// macOS hasn't asked yet, or its question never reached the user. backfill isn't
+    /// listed under Calendars in Privacy & Security until it has.
+    NotAsked,
+    /// Calendar access was refused.
     Denied,
+    /// A policy, such as a managed work Mac's, doesn't let apps read the calendar.
+    Restricted,
     /// Reading these calendars.
     Connected { calendars: Vec<String> },
 }
@@ -38,8 +43,12 @@ pub fn load(window: TimeRange, ask: bool) -> Load {
         Access::NotDetermined if ask => mac::request_access(),
         access => access,
     };
-    if access != Access::Granted {
-        return unavailable(Status::Denied);
+    match access {
+        Access::Granted => {}
+        // Still undecided after asking means the question never got to the user.
+        Access::NotDetermined => return unavailable(Status::NotAsked),
+        Access::Restricted => return unavailable(Status::Restricted),
+        _ => return unavailable(Status::Denied),
     }
 
     let calendars = mac::calendars();

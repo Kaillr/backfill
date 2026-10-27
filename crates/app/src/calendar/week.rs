@@ -922,12 +922,28 @@ impl Backfill {
 
     /// Says what to do when Outlook meetings can't be read, across the top of the calendar.
     fn render_calendar_notice(&self, theme: &Theme, l: Layout, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let (body, settings): (&str, bool) = match self.outlook {
+        // What the notice's button does, if it has one.
+        enum Fix {
+            Ask,
+            OpenSettings,
+        }
+        let (body, fix) = match self.outlook {
             outlook::Status::NotBundled => (
                 "macOS only lets apps read the calendar, and this copy of backfill was started as a plain program. Start it with cargo run, which opens it as an app.",
-                false,
+                None,
             ),
-            outlook::Status::Denied => ("backfill isn't allowed to read your calendar. Allow it under Calendars in Privacy & Security, then come back.", true),
+            outlook::Status::NotAsked => (
+                "backfill reads them from the Calendar app, and macOS hasn't asked you yet whether it may.",
+                Some(Fix::Ask),
+            ),
+            outlook::Status::Denied => (
+                "backfill isn't allowed to read your calendar. Allow it under Calendars in Privacy & Security, then come back.",
+                Some(Fix::OpenSettings),
+            ),
+            outlook::Status::Restricted => (
+                "This Mac's settings, set by whoever manages it, don't let apps read the calendar.",
+                None,
+            ),
             _ => return None,
         };
         Some(
@@ -950,22 +966,24 @@ impl Backfill {
                 .text_xs()
                 .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).flex_shrink_0().child("Outlook meetings aren't showing"))
                 .child(div().flex_1().text_color(theme.muted).child(body))
-                .when(settings, |d| {
-                    d.child(
-                        div()
-                            .id("open-calendar-privacy")
-                            .flex_shrink_0()
-                            .px_2()
-                            .py_1()
-                            .rounded_md()
-                            .bg(theme.ink)
-                            .text_color(theme.canvas)
-                            .cursor_pointer()
+                .when_some(fix, |d, fix| {
+                    let button = div()
+                        .id("calendar-access")
+                        .flex_shrink_0()
+                        .px_2()
+                        .py_1()
+                        .rounded_md()
+                        .bg(theme.ink)
+                        .text_color(theme.canvas)
+                        .cursor_pointer();
+                    d.child(match fix {
+                        Fix::Ask => button.on_click(cx.listener(|this, _, _, cx| this.refresh_outlook(true, cx))).child("Allow access"),
+                        Fix::OpenSettings => button
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars");
                             }))
                             .child("Open Privacy & Security"),
-                    )
+                    })
                 })
                 .into_any_element(),
         )
