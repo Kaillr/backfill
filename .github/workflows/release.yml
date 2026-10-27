@@ -1,0 +1,64 @@
+name: Release
+
+# Releases are made by hand: Actions → Release → Run workflow, or `gh workflow run release.yml`.
+# Pushing to main never releases. semantic-release reads the conventional commits since the
+# last release to choose the version, and stops without releasing if none of them call for one.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      # A keychain of its own, so codesign can use the certificate without asking anyone.
+      - name: Unlock the signing certificate
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          printf %s "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          rm "$RUNNER_TEMP/signing.p12"
+          echo "BACKFILL_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          npx --yes
+          --package semantic-release@25
+          --package @semantic-release/exec@7
+          --package @semantic-release/git@11
+          --package conventional-changelog-conventionalcommits@10
+          semantic-release
+
+      - name: Remove the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
