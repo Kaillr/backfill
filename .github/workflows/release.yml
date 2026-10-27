@@ -28,6 +28,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+      # vpk, Velopack's CLI, builds the installer and the update packages.
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - run: |
+          dotnet tool install --global vpk --version 1.2.161
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       # A keychain of its own, so codesign can use the certificate without asking anyone.
       # It has to be on the search list too, or codesign doesn't look in it.

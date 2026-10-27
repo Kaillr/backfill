@@ -5,10 +5,20 @@
     ["@semantic-release/commit-analyzer", { "preset": "conventionalcommits" }],
     ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
     [
+      "@semantic-release/github",
+      {
+        "releaseNameTemplate": "backfill <%= nextRelease.version %><%= nextRelease.version.startsWith('0.') ? ' beta' : '' %>",
+        "successComment": false,
+        "failComment": false,
+        "releasedLabels": false
+      }
+    ],
+    [
       "@semantic-release/exec",
       {
         "verifyConditionsCmd": "scripts/package-macos.sh --check",
         "prepareCmd": "scripts/package-macos.sh ${nextRelease.version}",
+        "publishCmd": "scripts/upload-macos.sh ${nextRelease.gitTag}",
         "successCmd": "case ${nextRelease.version} in 0.*) gh release edit ${nextRelease.gitTag} --prerelease ;; esac"
       }
     ],
@@ -17,16 +27,6 @@
       {
         "assets": ["crates/app/Cargo.toml", "crates/app/macos/Info.plist", "Cargo.lock"],
         "message": "chore(release): ${nextRelease.version} [skip ci]"
-      }
-    ],
-    [
-      "@semantic-release/github",
-      {
-        "assets": [{ "path": "target/dist/backfill-macos.zip", "label": "backfill for macOS (Apple silicon)" }],
-        "releaseNameTemplate": "backfill <%= nextRelease.version %><%= nextRelease.version.startsWith('0.') ? ' beta' : '' %>",
-        "successComment": false,
-        "failComment": false,
-        "releasedLabels": false
       }
     ]
   ]
