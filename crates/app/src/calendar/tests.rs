@@ -325,6 +325,17 @@ fn a_new_day_leaves_another_week_on_show() {
 }
 
 #[test]
+fn the_sync_status_opens_its_popover_under_itself() {
+    let (_app, mut window) = open();
+    window.read(|this, _| assert!(this.status_bounds.is_some(), "the header drew the sync status"));
+    window.update(|this, _, cx| this.toggle_status(cx));
+    window.draw();
+    window.read(|this, _| assert!(this.status_popover.is_some()));
+    window.simulate_keystrokes("escape");
+    window.read(|this, _| assert!(this.status_popover.is_none()));
+}
+
+#[test]
 fn header_buttons_still_click() {
     let (_app, mut window) = open();
     // The "›" button: after the traffic lights and the "‹" button.

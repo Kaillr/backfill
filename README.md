@@ -57,7 +57,11 @@ folders with your repositories, and your workday. macOS asks once whether backfi
 your calendars.
 
 Settings is a window of its own, from the backfill menu or `⌘ ,`. Changes apply as you make
-them. The connections in the calendar's header open their part of it.
+them.
+
+The header says how the connections are doing in a few words: when it last synced, that it's
+syncing, or which connection needs you. Click it for each connection on its own, Sync now, and
+the way into Settings.
 
 macOS needs Xcode (for Metal). On Windows and Linux, see
 [gpui-ce's setup notes](https://github.com/gpui-ce/gpui-ce/blob/main/SETUP.md). Outlook

@@ -3,6 +3,7 @@
 
 mod menu;
 mod review;
+mod status;
 pub(crate) mod update;
 mod week;
 
@@ -311,6 +312,13 @@ pub struct Backfill {
     search_task: Option<Task<()>>,
     /// The Settings window, while it's open.
     settings_window: Option<(WindowHandle<SettingsView>, Entity<SettingsView>, Subscription)>,
+    /// The header's sync status: the popover with each connection, while open, how many
+    /// have opened, and where the item was drawn, to hang the popover under it.
+    status_popover: Option<status::Popover>,
+    status_opened: usize,
+    status_bounds: Option<gpui::Bounds<Pixels>>,
+    /// When Jira was last read.
+    synced_at: Option<Timestamp>,
     update: update::Update,
     /// Velopack's updater, when backfill was installed with one.
     updater: Option<velopack::UpdateManager>,
@@ -473,6 +481,10 @@ impl Backfill {
             git_task: None,
             search_task: None,
             settings_window: None,
+            status_popover: None,
+            status_opened: 0,
+            status_bounds: None,
+            synced_at: None,
             update: update::Update::default(),
             updater: None,
             update_task: None,
@@ -624,6 +636,7 @@ impl Backfill {
                 if let Some(week) = week {
                     self.pulled.insert(week, std::time::Instant::now());
                 }
+                self.synced_at = Some(Timestamp::now());
                 let at = self.fmt_time(Timestamp::now());
                 self.statuses.jira = Status::Ok(format!("Connected as {name}. Last synced at {at}.").into());
                 self.persist();
@@ -1320,7 +1333,9 @@ impl Backfill {
     }
 
     pub(crate) fn dismiss(&mut self, _: &Dismiss, window: &mut Window, cx: &mut Context<Self>) {
-        if self.menu.is_some() {
+        if self.status_popover.is_some() {
+            self.close_status(cx);
+        } else if self.menu.is_some() {
             self.close_menu(window, cx);
         } else if self.sheet.is_some() {
             self.close_sheet(window, cx);
@@ -1615,6 +1630,7 @@ impl Render for Backfill {
                 )
             })
             .when_some(self.render_menu(&theme, cx), |root, menu| root.child(menu))
+            .when_some(self.render_status_popover(&theme, cx), |root, popover| root.child(popover))
             .when(self.sheet.is_some(), |root| root.child(self.render_sheet(&theme, cx)))
     }
 }
@@ -1712,7 +1728,7 @@ impl Backfill {
             })
             .child(div().flex_1())
             .children(self.render_update_button(theme, cx))
-            .child(self.render_connections(theme, cx))
+            .children(self.render_status(theme, cx))
             .child(
                 div()
                     .flex()
@@ -1757,53 +1773,6 @@ impl Backfill {
                     }))
                     .child(label)
             })
-    }
-
-    /// One dot per connection, coloured by how it's doing. Each opens its part of Settings,
-    /// where it says more.
-    fn render_connections(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
-        let item = |pane: Pane| {
-            div()
-                .id(("connection", pane as usize))
-                .occlude()
-                .flex()
-                .items_center()
-                .gap_1()
-                .px_1p5()
-                .py_1()
-                .rounded_md()
-                .cursor_pointer()
-                .hover(|s| s.bg(theme.line))
-                .on_click(cx.listener(move |this, _, _, cx| this.open_settings(Some(pane), cx)))
-        };
-        let dot = |pane: Pane, name: &'static str, status: &Status| {
-            item(pane)
-                .child(div().size(px(7.)).rounded_full().bg(status.color(theme)))
-                .child(div().text_color(if matches!(status, Status::Off) { theme.faint } else { theme.muted }).child(name))
-        };
-        div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .text_xs()
-            .child(dot(Pane::Jira, "Jira", &self.statuses.jira))
-            .child(dot(Pane::Toggl, "Toggl", &self.statuses.toggl))
-            .child(dot(Pane::Calendar, "Outlook", &self.statuses.calendar))
-            .child(dot(Pane::Code, "Git", &self.statuses.git))
-            .child(
-                div()
-                    .id("open-settings")
-                    .occlude()
-                    .px_2()
-                    .py_1()
-                    .rounded_md()
-                    .text_sm()
-                    .text_color(theme.muted)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.line).text_color(theme.ink))
-                    .on_click(cx.listener(|this, _, _, cx| this.open_settings(None, cx)))
-                    .child("Settings"),
-            )
     }
 
     fn render_footer(&self, theme: &Theme) -> impl IntoElement {
